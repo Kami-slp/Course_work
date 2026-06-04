@@ -13,8 +13,7 @@ ehthumbs.db
 .atom/
 .history/
 
-# Cursor
-.cursor/
+
 
 # Flutter / Dart
 .dart_tool/
