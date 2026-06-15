@@ -20,17 +20,14 @@ android {
 
     defaultConfig {
         applicationId = "com.example.vpn_application"
+
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
+
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        multiDexEnabled = true
-    }
 
-    buildTypes {
-        release {
-            signingConfig = signingConfigs.getByName("debug")
-        }
+        multiDexEnabled = true
     }
 
     packaging {
@@ -38,12 +35,25 @@ android {
             useLegacyPackaging = true
         }
     }
+
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+}
+
+dependencies {
+    implementation(
+        fileTree(
+            mapOf(
+                "dir" to "libs",
+                "include" to listOf("*.aar")
+            )
+        )
+    )
 }
 
 flutter {
     source = "../.."
-}
-
-dependencies {
-    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
 }

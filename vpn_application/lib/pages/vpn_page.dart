@@ -1,53 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:v2ray_box/v2ray_box.dart';
 
-import 'subscription_service.dart';
-
-late final V2rayBox v2ray;
-
-const defaultSubscriptionUrl = 'https://sub.kami-sleep.de/fpQU3dw3R4o1wnxj';
-
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  v2ray = V2rayBox();
-  await v2ray.initialize(notificationStopButtonText: 'Отключить');
-  await v2ray.setCoreEngine('xray');
-  await v2ray.setServiceMode(VpnMode.vpn);
-
-  runApp(const MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF6C5CE7)),
-        useMaterial3: true,
-      ),
-      home: const VpnPage(),
-    );
-  }
-}
+import '../services/api_service.dart';
+import '../services/auth_storage.dart';
+import '../subscription_service.dart';
+import '../v2ray_instance.dart';
 
 class VpnPage extends StatefulWidget {
-  const VpnPage({super.key});
+  const VpnPage({
+    super.key,
+    required this.token,
+    required this.onLogout,
+  });
+
+  final String token;
+  final VoidCallback onLogout;
 
   @override
   State<VpnPage> createState() => _VpnPageState();
 }
 
 class _VpnPageState extends State<VpnPage> {
-  final _subUrlController = TextEditingController(text: defaultSubscriptionUrl);
+  final _api = ApiService();
 
   VpnStatus _status = VpnStatus.stopped;
   String _logs = '';
   bool _loadingSub = false;
   String? _error;
+  String? _username;
 
   List<VpnConfig> _configs = [];
   VpnConfig? _selectedConfig;
@@ -66,12 +46,6 @@ class _VpnPageState extends State<VpnPage> {
     _loadSubscription();
   }
 
-  @override
-  void dispose() {
-    _subUrlController.dispose();
-    super.dispose();
-  }
-
   Future<void> _loadSubscription() async {
     setState(() {
       _loadingSub = true;
@@ -79,9 +53,10 @@ class _VpnPageState extends State<VpnPage> {
     });
 
     try {
-      final links = await SubscriptionService.fetchConfigLinks(
-        _subUrlController.text.trim(),
-      );
+      final profile = await _api.fetchProfile(widget.token);
+      final subUrl = await _api.fetchSubscriptionUrl(widget.token);
+
+      final links = await SubscriptionService.fetchConfigLinks(subUrl);
       if (links.isEmpty) {
         throw StateError('Подписка пуста или не содержит конфигов');
       }
@@ -96,12 +71,20 @@ class _VpnPageState extends State<VpnPage> {
       }
 
       setState(() {
+        _username = profile['username'] as String?;
         _configs = configs;
         _selectedConfig = configs.first;
         for (final c in _configs) {
           c.isSelected = c == _selectedConfig;
         }
       });
+    } on ApiException catch (e) {
+      if (e.statusCode == 401) {
+        await AuthStorage.clearToken();
+        if (mounted) widget.onLogout();
+        return;
+      }
+      setState(() => _error = e.message);
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -161,6 +144,12 @@ class _VpnPageState extends State<VpnPage> {
     }
   }
 
+  Future<void> _logout() async {
+    await v2ray.disconnect();
+    await AuthStorage.clearToken();
+    widget.onLogout();
+  }
+
   bool get _isConnected =>
       _status == VpnStatus.started || _status == VpnStatus.starting;
 
@@ -168,12 +157,17 @@ class _VpnPageState extends State<VpnPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('VPN'),
+        title: Text(_username != null ? 'VPN · $_username' : 'VPN'),
         actions: [
           IconButton(
             onPressed: _loadingSub ? null : _loadSubscription,
             icon: const Icon(Icons.refresh),
             tooltip: 'Обновить подписку',
+          ),
+          IconButton(
+            onPressed: _logout,
+            icon: const Icon(Icons.logout),
+            tooltip: 'Выйти',
           ),
         ],
       ),
@@ -182,28 +176,6 @@ class _VpnPageState extends State<VpnPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(
-              controller: _subUrlController,
-              decoration: const InputDecoration(
-                labelText: 'Subscription URL',
-                border: OutlineInputBorder(),
-                hintText: 'https://... или sub://...',
-              ),
-              maxLines: 2,
-            ),
-            const SizedBox(height: 8),
-            FilledButton.icon(
-              onPressed: _loadingSub ? null : _loadSubscription,
-              icon: _loadingSub
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.cloud_download),
-              label: Text(_loadingSub ? 'Загрузка...' : 'Загрузить подписку'),
-            ),
-            const SizedBox(height: 12),
             Text(
               'Статус: $_status',
               style: Theme.of(context).textTheme.titleMedium,
@@ -219,11 +191,9 @@ class _VpnPageState extends State<VpnPage> {
             Expanded(
               child: _configs.isEmpty
                   ? Center(
-                      child: Text(
-                        _loadingSub
-                            ? 'Загрузка конфигов...'
-                            : 'Нет конфигов. Нажмите «Загрузить подписку».',
-                      ),
+                      child: _loadingSub
+                          ? const CircularProgressIndicator()
+                          : const Text('Нет конфигов. Нажмите обновить.'),
                     )
                   : ListView.builder(
                       itemCount: _configs.length,
