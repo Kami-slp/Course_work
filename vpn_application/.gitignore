@@ -13,6 +13,9 @@ ehthumbs.db
 .atom/
 .history/
 
+# Cursor
+.cursor/
+
 # Flutter / Dart
 .dart_tool/
 .flutter-plugins
@@ -67,10 +70,10 @@ key.properties
 .env.*
 *.pem
 
-# VPN: cloned sing-box source (not part of the app, rebuild via scripts if needed)
+
 /sing-box/
 
-# VPN: Xray core binary (~90 MB, rebuild: scripts/build_android_libxray.sh)
+
 /android/app/libs/*.aar
 /android/app/src/main/jniLibs/**/libsingbox.so
 
